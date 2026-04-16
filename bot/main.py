@@ -527,24 +527,32 @@ async def handle_message(message: Message):
 
     # 0. Check if we're awaiting setup input
     setup_state = _awaiting_setup.get(message.chat.id)
-    if setup_state == "groq_key" and message.text:
-        key = message.text.strip()
-        if key.startswith("gsk_") and len(key) > 20:
-            config.set_env_var("GROQ_API_KEY", key)
-            config.reload_groq_key()
+    if setup_state == "groq_key":
+        # Voice/photo/non-text → cancel setup mode, process normally
+        if not message.text:
             _awaiting_setup.pop(message.chat.id, None)
-            await message.reply(
-                "\u2705 Groq API \u043a\u043b\u044e\u0447 \u0441\u043e\u0445\u0440\u0430\u043d\u0451\u043d. \u0413\u043e\u043b\u043e\u0441\u043e\u0432\u044b\u0435 \u0432\u043a\u043b\u044e\u0447\u0435\u043d\u044b.\n"
-                "\u041e\u0442\u043f\u0440\u0430\u0432\u044c \u0433\u043e\u043b\u043e\u0441\u043e\u0432\u043e\u0435 \u0434\u043b\u044f \u043f\u0440\u043e\u0432\u0435\u0440\u043a\u0438.",
-                reply_markup=build_main_menu(),
-            )
         else:
-            await message.reply(
-                "\u274c \u041d\u0435\u0432\u0435\u0440\u043d\u044b\u0439 \u0444\u043e\u0440\u043c\u0430\u0442. \u041a\u043b\u044e\u0447 \u043d\u0430\u0447\u0438\u043d\u0430\u0435\u0442\u0441\u044f \u0441 <code>gsk_</code>\n"
-                "\u041f\u043e\u043f\u0440\u043e\u0431\u0443\u0439 \u0435\u0449\u0451 \u0438\u043b\u0438 /setup \u0434\u043b\u044f \u043e\u0442\u043c\u0435\u043d\u044b.",
-                parse_mode=ParseMode.HTML,
-            )
-        return
+            key = message.text.strip()
+            if key.startswith("gsk_") and len(key) > 20:
+                config.set_env_var("GROQ_API_KEY", key)
+                config.reload_groq_key()
+                _awaiting_setup.pop(message.chat.id, None)
+                await message.reply(
+                    "\u2705 Groq API \u043a\u043b\u044e\u0447 \u0441\u043e\u0445\u0440\u0430\u043d\u0451\u043d. \u0413\u043e\u043b\u043e\u0441\u043e\u0432\u044b\u0435 \u0432\u043a\u043b\u044e\u0447\u0435\u043d\u044b.\n"
+                    "\u041e\u0442\u043f\u0440\u0430\u0432\u044c \u0433\u043e\u043b\u043e\u0441\u043e\u0432\u043e\u0435 \u0434\u043b\u044f \u043f\u0440\u043e\u0432\u0435\u0440\u043a\u0438.",
+                    reply_markup=build_main_menu(),
+                )
+            elif key.startswith("/"):
+                # User sent a command instead of key — cancel setup
+                _awaiting_setup.pop(message.chat.id, None)
+                # Don't return — let the message be processed normally below
+            else:
+                await message.reply(
+                    "\u274c \u041d\u0435\u0432\u0435\u0440\u043d\u044b\u0439 \u0444\u043e\u0440\u043c\u0430\u0442. \u041a\u043b\u044e\u0447 \u043d\u0430\u0447\u0438\u043d\u0430\u0435\u0442\u0441\u044f \u0441 <code>gsk_</code>\n"
+                    "\u041e\u0442\u043f\u0440\u0430\u0432\u044c \u043a\u043b\u044e\u0447 \u0438\u043b\u0438 \u043b\u044e\u0431\u043e\u0435 \u0441\u043e\u043e\u0431\u0449\u0435\u043d\u0438\u0435 \u0434\u043b\u044f \u043e\u0442\u043c\u0435\u043d\u044b.",
+                    parse_mode=ParseMode.HTML,
+                )
+            return
 
     # 1. Extract text and optional image
     text, image_path = await extract_text(message)
