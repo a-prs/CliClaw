@@ -1,0 +1,20 @@
+[Unit]
+Description=CliClaw Telegram AI Assistant
+After=network.target
+
+[Service]
+Type=simple
+User=cliclaw
+WorkingDirectory=/opt/cliclaw/bot
+ExecStart=/opt/cliclaw/.venv/bin/python main.py
+Restart=on-failure
+RestartSec=10
+StartLimitIntervalSec=300
+StartLimitBurst=5
+Environment=PYTHONUNBUFFERED=1
+Environment=HOME=/opt/cliclaw
+Environment=PATH=/usr/local/bin:/usr/bin:/bin:/opt/cliclaw/.local/bin
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

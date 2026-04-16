@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.env
+*.db
+.venv/
+# Workspace: ignore runtime files, keep config
+workspace/*
+!workspace/IDENTITY.md
+data/
+*.ogg
+*.wav
+*.jpg
