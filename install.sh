@@ -81,9 +81,9 @@ if [[ -z "$CLI_BACKEND" ]]; then
     echo ""
     echo -e "${BOLD}  Which AI assistant do you want to use?${NC}"
     echo ""
-    echo "    1) Claude Code  (Anthropic — API key or OAuth)"
-    echo "    2) Gemini CLI   (Google — FREE, just API key)"
-    echo "    3) Codex CLI    (OpenAI — login from phone, no key needed)"
+    echo "    1) Claude Code  (Anthropic — login by link, Max subscription)"
+    echo "    2) Gemini CLI   (Google — FREE, just API key, no card)"
+    echo "    3) Codex CLI    (OpenAI — login from phone, ChatGPT subscription)"
     echo ""
     while true; do
         read -p "  Your choice [1-3]: " backend_choice
@@ -175,17 +175,7 @@ case $CLI_BACKEND in
             fi
         fi
         info "Claude Code CLI ready"
-
-        echo ""
-        echo "  How do you want to authenticate?"
-        echo "    a) API key (from console.anthropic.com)"
-        echo "    b) I'll set it up later"
-        echo ""
-        read -p "  Choice [a/b]: " claude_auth
-        if [[ "$claude_auth" == "a" || "$claude_auth" == "A" ]]; then
-            read -p "  Anthropic API key: " ANTHROPIC_KEY
-            BACKEND_SPECIFIC_VARS="ANTHROPIC_API_KEY=$ANTHROPIC_KEY"
-        fi
+        # Auth happens in Step 11 (OAuth login)
         ;;
 
     gemini)
@@ -375,10 +365,28 @@ info "Permissions configured"
 # ============================================================
 case $CLI_BACKEND in
     claude)
-        if [[ -z "$ANTHROPIC_KEY" ]]; then
-            warn "No API key set. Add ANTHROPIC_API_KEY to $INSTALL_DIR/.env later"
+        echo ""
+        echo -e "${BOLD}======================================${NC}"
+        echo -e "${BOLD}    Claude Code Authorization${NC}"
+        echo -e "${BOLD}======================================${NC}"
+        echo ""
+        echo "  A link will appear — open it in your browser."
+        echo "  Log in with your Anthropic account (Max subscription)."
+        echo "  Click 'Authorize' — and you're done."
+        echo ""
+        read -p "  Press Enter to start..."
+
+        echo ""
+        sudo -u cliclaw HOME="$INSTALL_DIR" BROWSER=echo \
+            PATH="/usr/local/bin:/usr/bin:/bin:$PATH" \
+            timeout 120 claude /login || true
+
+        echo ""
+        read -p "  Authorization OK? (y/n): " claude_login_ok
+        if [[ "$claude_login_ok" != "y" && "$claude_login_ok" != "Y" ]]; then
+            warn "You can login later: sudo -u cliclaw claude /login"
         else
-            info "Claude Code: API key configured"
+            info "Claude Code: authorized"
         fi
         ;;
 
