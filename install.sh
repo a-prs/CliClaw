@@ -58,42 +58,7 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 # ============================================================
-#  MODE: --upgrade (code only, no config changes)
-# ============================================================
-if [[ "$MODE" == "upgrade" ]]; then
-    info "Upgrading CliClaw..."
-    git config --global --add safe.directory "$INSTALL_DIR" 2>/dev/null
-    cd "$INSTALL_DIR" && git pull
-    "$INSTALL_DIR/.venv/bin/pip" install -q -r "$INSTALL_DIR/bot/requirements.txt"
-    systemctl restart "$SERVICE_NAME"
-    info "Done! Check: systemctl status $SERVICE_NAME"
-    exit 0
-fi
-
-# ============================================================
-#  MODE: --reconfigure (change backend/tokens, skip env setup)
-# ============================================================
-if [[ "$MODE" == "reconfigure" ]]; then
-    [[ -d "$INSTALL_DIR/bot" ]] || fail "CliClaw not installed. Run without --reconfigure first."
-
-    # Choose backend
-    _choose_backend
-    # Configure tokens
-    _configure_tokens
-    # Write .env
-    _write_env
-    # Auth
-    _run_auth
-    # Copy identity
-    _copy_identity
-    # Restart
-    systemctl restart "$SERVICE_NAME"
-    info "Reconfigured! Backend: $CLI_BACKEND"
-    exit 0
-fi
-
-# ============================================================
-#  Functions (used by both install and reconfigure)
+#  Functions (must be defined before use)
 # ============================================================
 
 _choose_backend() {
@@ -306,7 +271,36 @@ _run_auth() {
 }
 
 # ============================================================
-#  INSTALL: Full installation flow
+#  MODE: --upgrade
+# ============================================================
+if [[ "$MODE" == "upgrade" ]]; then
+    [[ -d "$INSTALL_DIR/bot" ]] || fail "CliClaw not installed."
+    info "Upgrading CliClaw..."
+    git config --global --add safe.directory "$INSTALL_DIR" 2>/dev/null
+    cd "$INSTALL_DIR" && git pull
+    "$INSTALL_DIR/.venv/bin/pip" install -q -r "$INSTALL_DIR/bot/requirements.txt"
+    systemctl restart "$SERVICE_NAME"
+    info "Done!"
+    exit 0
+fi
+
+# ============================================================
+#  MODE: --reconfigure
+# ============================================================
+if [[ "$MODE" == "reconfigure" ]]; then
+    [[ -d "$INSTALL_DIR/bot" ]] || fail "CliClaw not installed."
+    _choose_backend
+    _configure_tokens
+    _write_env
+    _run_auth
+    _copy_identity
+    systemctl restart "$SERVICE_NAME"
+    info "Reconfigured! Backend: $CLI_BACKEND"
+    exit 0
+fi
+
+# ============================================================
+#  MODE: install
 # ============================================================
 
 # --- Already installed? ---
