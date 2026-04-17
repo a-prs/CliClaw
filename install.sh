@@ -61,6 +61,77 @@ fi
 #  Functions (must be defined before use)
 # ============================================================
 
+_install_backend_cli() {
+    # Install the CLI binary for selected backend + ensure symlink
+    case $CLI_BACKEND in
+        claude)
+            if ! command -v claude &>/dev/null; then
+                info "Installing Claude Code CLI..."
+                npm install -g @anthropic-ai/claude-code@latest 2>&1 | tail -3 || fail "Failed to install Claude Code"
+            fi
+            # Ensure symlink
+            CLAUDE_PATH=$(command -v claude 2>/dev/null)
+            if [[ -n "$CLAUDE_PATH" && "$CLAUDE_PATH" != "/usr/local/bin/claude" ]]; then
+                ln -sf "$CLAUDE_PATH" /usr/local/bin/claude
+            elif [[ -z "$CLAUDE_PATH" ]]; then
+                NPM_BIN=$(npm config get prefix)/bin
+                [[ -f "$NPM_BIN/claude" ]] && ln -sf "$NPM_BIN/claude" /usr/local/bin/claude || fail "Claude CLI not found after install"
+            fi
+            info "Claude Code CLI ready"
+            ;;
+        gemini)
+            if ! command -v gemini &>/dev/null; then
+                info "Installing Gemini CLI..."
+                npm install -g @google/gemini-cli@latest 2>&1 | tail -3 || fail "Failed to install Gemini CLI"
+            fi
+            GEMINI_PATH=$(command -v gemini 2>/dev/null)
+            if [[ -n "$GEMINI_PATH" && "$GEMINI_PATH" != "/usr/local/bin/gemini" ]]; then
+                ln -sf "$GEMINI_PATH" /usr/local/bin/gemini
+            elif [[ -z "$GEMINI_PATH" ]]; then
+                NPM_BIN=$(npm config get prefix)/bin
+                [[ -f "$NPM_BIN/gemini" ]] && ln -sf "$NPM_BIN/gemini" /usr/local/bin/gemini || fail "Gemini CLI not found after install"
+            fi
+            info "Gemini CLI ready"
+            ;;
+        codex)
+            if ! command -v codex &>/dev/null; then
+                info "Installing Codex CLI..."
+                npm install -g @openai/codex@latest 2>&1 | tail -3 || fail "Failed to install Codex CLI"
+            fi
+            CODEX_PATH=$(command -v codex 2>/dev/null)
+            if [[ -n "$CODEX_PATH" && "$CODEX_PATH" != "/usr/local/bin/codex" ]]; then
+                ln -sf "$CODEX_PATH" /usr/local/bin/codex
+            elif [[ -z "$CODEX_PATH" ]]; then
+                NPM_BIN=$(npm config get prefix)/bin
+                [[ -f "$NPM_BIN/codex" ]] && ln -sf "$NPM_BIN/codex" /usr/local/bin/codex || fail "Codex CLI not found after install"
+            fi
+            info "Codex CLI ready"
+            ;;
+    esac
+}
+
+_do_reconfigure() {
+    _choose_backend
+    _install_backend_cli
+    _configure_tokens
+    _write_env
+    _copy_identity
+    _run_auth
+    # Mark old sessions as done (they belong to previous backend)
+    if [[ -f "$INSTALL_DIR/data/bot.db" ]]; then
+        "$INSTALL_DIR/.venv/bin/python" -c "
+import sqlite3
+conn = sqlite3.connect('$INSTALL_DIR/data/bot.db')
+conn.execute(\"UPDATE sessions SET status='done' WHERE status != 'done'\")
+conn.commit(); conn.close()
+print('Old sessions closed')
+" 2>/dev/null || true
+    fi
+    chown -R cliclaw:cliclaw "$INSTALL_DIR"
+    systemctl restart "$SERVICE_NAME" 2>/dev/null || true
+    info "Reconfigured! Backend: $CLI_BACKEND"
+}
+
 _choose_backend() {
     if [[ -z "$CLI_BACKEND" ]]; then
         echo ""
@@ -201,6 +272,9 @@ ENVEOF
 
 _copy_identity() {
     IDENTITY_SRC="$INSTALL_DIR/workspace/IDENTITY.md"
+    # Remove old identity files
+    rm -f "$INSTALL_DIR/workspace/CLAUDE.md" "$INSTALL_DIR/workspace/GEMINI.md" "$INSTALL_DIR/workspace/QWEN.md" 2>/dev/null
+    # Copy for current backend
     case $CLI_BACKEND in
         claude) cp "$IDENTITY_SRC" "$INSTALL_DIR/workspace/CLAUDE.md" 2>/dev/null ;;
         gemini) cp "$IDENTITY_SRC" "$INSTALL_DIR/workspace/GEMINI.md" 2>/dev/null ;;
@@ -289,13 +363,7 @@ fi
 # ============================================================
 if [[ "$MODE" == "reconfigure" ]]; then
     [[ -d "$INSTALL_DIR/bot" ]] || fail "CliClaw not installed."
-    _choose_backend
-    _configure_tokens
-    _write_env
-    _run_auth
-    _copy_identity
-    systemctl restart "$SERVICE_NAME"
-    info "Reconfigured! Backend: $CLI_BACKEND"
+    _do_reconfigure
     exit 0
 fi
 
@@ -315,13 +383,7 @@ if [[ -d "$INSTALL_DIR/bot" ]]; then
     read -p "  Choice [r/f/q]: " install_choice
     case $install_choice in
         r|R)
-            _choose_backend
-            _configure_tokens
-            _write_env
-            _run_auth
-            _copy_identity
-            systemctl restart "$SERVICE_NAME" 2>/dev/null || true
-            info "Reconfigured! Backend: $CLI_BACKEND"
+            _do_reconfigure
             exit 0
             ;;
         f|F)
@@ -441,43 +503,7 @@ echo ""
 info "=== Phase 2: Backend ==="
 
 _choose_backend
-
-# Install CLI tool
-case $CLI_BACKEND in
-    claude)
-        if ! command -v claude &>/dev/null; then
-            info "Installing Claude Code CLI..."
-            npm install -g @anthropic-ai/claude-code@latest 2>&1 | tail -3 || fail "Failed to install Claude Code"
-            if ! command -v claude &>/dev/null; then
-                NPM_BIN=$(npm config get prefix)/bin
-                [[ -f "$NPM_BIN/claude" ]] && ln -sf "$NPM_BIN/claude" /usr/local/bin/claude
-            fi
-        fi
-        info "Claude Code CLI ready"
-        ;;
-    gemini)
-        if ! command -v gemini &>/dev/null; then
-            info "Installing Gemini CLI..."
-            npm install -g @google/gemini-cli@latest 2>&1 | tail -3 || fail "Failed to install Gemini CLI"
-            if ! command -v gemini &>/dev/null; then
-                NPM_BIN=$(npm config get prefix)/bin
-                [[ -f "$NPM_BIN/gemini" ]] && ln -sf "$NPM_BIN/gemini" /usr/local/bin/gemini
-            fi
-        fi
-        info "Gemini CLI ready"
-        ;;
-    codex)
-        if ! command -v codex &>/dev/null; then
-            info "Installing Codex CLI..."
-            npm install -g @openai/codex@latest 2>&1 | tail -3 || fail "Failed to install Codex CLI"
-            if ! command -v codex &>/dev/null; then
-                NPM_BIN=$(npm config get prefix)/bin
-                [[ -f "$NPM_BIN/codex" ]] && ln -sf "$NPM_BIN/codex" /usr/local/bin/codex
-            fi
-        fi
-        info "Codex CLI ready"
-        ;;
-esac
+_install_backend_cli
 
 info "=== Phase 2 complete! ==="
 echo ""
