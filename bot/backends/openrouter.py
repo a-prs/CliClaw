@@ -100,23 +100,38 @@ class OpenRouterBackend(APIBackend):
         """Build OpenAI-compatible messages array."""
         messages = []
 
-        # 1. System message: IDENTITY.md + memory context
+        # 1. System message
         system_parts = []
 
+        # Core identity
         identity = self._load_identity()
         if identity:
             system_parts.append(identity)
 
+        # API-specific instructions: NO tool use, NO JSON commands
+        system_parts.append(
+            "IMPORTANT RULES:\n"
+            "- You are a TEXT-ONLY assistant. You CANNOT read files, run commands, or use tools.\n"
+            "- NEVER output JSON tool calls like {\"type\": \"read\"}. Just answer in plain text.\n"
+            "- When user asks to create a reminder/schedule, output the schedule as a JSON block "
+            "inside your text response. The bot will parse it and save automatically.\n"
+            "- When user asks about existing reminders, check the schedules section below."
+        )
+
+        # User facts from memory
         memory = self._get_memory_context(prompt)
         if memory:
             system_parts.append(
-                "IMPORTANT — The following facts were saved by the user in previous conversations. "
-                "Use them to answer questions. These are VERIFIED facts, not guesses:\n\n"
+                "VERIFIED USER FACTS (use these to answer questions):\n\n"
                 f"{memory}"
             )
 
-        if system_parts:
-            messages.append({"role": "system", "content": "\n\n".join(system_parts)})
+        # Current schedules (so model can list them without file access)
+        schedules_content = self._load_schedules()
+        if schedules_content:
+            system_parts.append(f"CURRENT SCHEDULES:\n{schedules_content}")
+
+        messages.append({"role": "system", "content": "\n\n".join(system_parts)})
 
         # 2. History: last 5 messages from DB
         try:
@@ -168,6 +183,18 @@ class OpenRouterBackend(APIBackend):
         identity_path = Path(self.work_dir) / "IDENTITY.md"
         if identity_path.exists():
             return identity_path.read_text(encoding="utf-8")[:2000]
+        return None
+
+    def _load_schedules(self) -> str | None:
+        """Read schedules.json so model can list reminders without file access."""
+        schedules_path = Path(self.work_dir) / "schedules.json"
+        if schedules_path.exists():
+            try:
+                content = schedules_path.read_text(encoding="utf-8").strip()
+                if content and content != "[]":
+                    return content[:1500]
+            except OSError:
+                pass
         return None
 
     def _get_memory_context(self, prompt: str) -> str | None:
