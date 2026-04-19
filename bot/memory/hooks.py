@@ -91,10 +91,60 @@ async def extract_and_save(user_prompt: str, assistant_response: str):
             fact = match.strip()
             if len(fact) > 10:
                 append_note("facts.md", fact)
-                # Re-index entire facts.md (not just the new fact)
                 full_content = read_note("facts.md") or fact
                 index_note("facts.md", full_content)
                 logger.info(f"Extracted explicit fact: {fact[:60]}...")
+
+    # Extract schedule entries from assistant response (for API backends)
+    _extract_schedules(assistant_response)
+
+
+def _extract_schedules(response: str):
+    """Parse schedule JSON from model response and write to schedules.json.
+
+    API backends can't write files, so we parse their text output.
+    """
+    import json
+
+    # Find JSON blocks that look like schedule entries
+    json_blocks = re.findall(r'\{[^{}]*"cron"[^{}]*\}', response, re.DOTALL)
+    if not json_blocks:
+        return
+
+    schedules_path = config.WORK_DIR / "schedules.json"
+
+    # Load existing schedules
+    existing = []
+    if schedules_path.exists():
+        try:
+            existing = json.loads(schedules_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    added = 0
+    for block in json_blocks:
+        try:
+            entry = json.loads(block)
+            # Validate required fields
+            if "cron" in entry and ("prompt" in entry or "description" in entry):
+                if "id" not in entry:
+                    entry["id"] = f"auto-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+                if "enabled" not in entry:
+                    entry["enabled"] = True
+                # Avoid duplicates
+                existing_ids = {e.get("id") for e in existing}
+                if entry["id"] not in existing_ids:
+                    existing.append(entry)
+                    added += 1
+        except json.JSONDecodeError:
+            continue
+
+    if added > 0:
+        schedules_path.write_text(
+            json.dumps(existing, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        logger.info(f"Auto-saved {added} schedule(s) from model response")
 
 
 def _slugify(text: str) -> str:
